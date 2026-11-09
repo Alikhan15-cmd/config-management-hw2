@@ -8,12 +8,14 @@ from src.constants import (
     DEFAULT_CONFIG_PATH,
     EXIT_CODE_ERROR,
     EXIT_CODE_SUCCESS,
+    FOUR,
     ONE,
     THREE,
     TWO,
     ZERO,
 )
 from src.graph import build_dependency_graph
+from src.order import compute_load_order, get_pip_comparison_notes
 
 
 def build_argument_parser() -> argparse.ArgumentParser:
@@ -96,6 +98,29 @@ def run_stage_three(config_path: str) -> int:
     return EXIT_CODE_SUCCESS
 
 
+def run_stage_four(config_path: str) -> int:
+    """Execute Stage 4: compute and display load order."""
+    config = load_config(config_path)
+    graph = build_dependency_graph(
+        root_package=config.package_name,
+        version=config.package_version,
+        repo_url=config.repository_url,
+        test_mode=config.test_mode,
+        max_depth=config.max_depth,
+        filter_substring=config.filter_substring,
+    )
+    order = compute_load_order(graph, config.package_name)
+    print(f"=== Этап 4. Порядок загрузки пакета {config.package_name} ===")
+    for idx, pkg in enumerate(order, start=ONE):
+        print(f"  {idx}. {pkg}")
+
+    print("\n=== Сравнение с менеджером пакетов (pip) ===")
+    for note in get_pip_comparison_notes():
+        print(note)
+
+    return EXIT_CODE_SUCCESS
+
+
 def main(argv=None) -> int:
     """Main CLI entry point."""
     parser = build_argument_parser()
@@ -108,6 +133,8 @@ def main(argv=None) -> int:
             return run_stage_two(args.config)
         if args.stage == THREE:
             return run_stage_three(args.config)
+        if args.stage == FOUR:
+            return run_stage_four(args.config)
         print(f"Stage {args.stage} is not yet implemented.")
         return EXIT_CODE_SUCCESS
     except (ConfigError, CollectorError) as err:
