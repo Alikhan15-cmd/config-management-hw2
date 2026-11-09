@@ -8,6 +8,7 @@ from src.constants import (
     DEFAULT_CONFIG_PATH,
     EXIT_CODE_ERROR,
     EXIT_CODE_SUCCESS,
+    FIVE,
     FOUR,
     ONE,
     THREE,
@@ -16,6 +17,11 @@ from src.constants import (
 )
 from src.graph import build_dependency_graph
 from src.order import compute_load_order, get_pip_comparison_notes
+from src.visualizer import (
+    generate_plantuml_text,
+    get_visualizer_comparison_notes,
+    save_and_render_diagram,
+)
 
 
 def build_argument_parser() -> argparse.ArgumentParser:
@@ -33,9 +39,14 @@ def build_argument_parser() -> argparse.ArgumentParser:
         "--stage",
         "-s",
         type=int,
-        default=ONE,
+        default=FIVE,
         choices=[1, 2, 3, 4, 5],
-        help="Target stage to execute (1..5, default: 1)",
+        help="Target stage to execute (1..5, default: 5)",
+    )
+    parser.add_argument(
+        "--demo",
+        action="store_true",
+        help="Run Stage 5 demonstration on 3 distinct packages",
     )
     return parser
 
@@ -121,6 +132,65 @@ def run_stage_four(config_path: str) -> int:
     return EXIT_CODE_SUCCESS
 
 
+def _visualize_single_package(
+    pkg: str,
+    ver: str,
+    repo_url: str,
+    test_mode: bool,
+    max_depth: int,
+    filter_sub: str,
+) -> None:
+    """Build, render and display diagram for a package."""
+    graph = build_dependency_graph(
+        root_package=pkg,
+        version=ver,
+        repo_url=repo_url,
+        test_mode=test_mode,
+        max_depth=max_depth,
+        filter_substring=filter_sub,
+    )
+    puml_text = generate_plantuml_text(graph, pkg)
+    print(f"--- PlantUML диаграмма для {pkg} ---")
+    print(puml_text)
+
+    puml_path, svg_path = save_and_render_diagram(graph, pkg)
+    print(f"PlantUML сохранен: {puml_path}")
+    print(f"Изображение графа сохранено: {svg_path}\n")
+
+
+def run_stage_five(config_path: str, run_demo: bool = False) -> int:
+    """Execute Stage 5: PlantUML diagram generation and visualization."""
+    config = load_config(config_path)
+    print("=== Этап 5. Визуализация графа зависимостей (PlantUML) ===")
+
+    _visualize_single_package(
+        config.package_name,
+        config.package_version,
+        config.repository_url,
+        config.test_mode,
+        config.max_depth,
+        config.filter_substring,
+    )
+
+    if run_demo:
+        print("=== Демонстрация на 3 пакетах тестового репозитория ===")
+        demos = [
+            ("A", "test_repos/simple_repo.json"),
+            ("A", "test_repos/cyclic_repo.json"),
+            ("A", "test_repos/diamond_repo.json"),
+        ]
+        for name, repo_file in demos:
+            _visualize_single_package(
+                name, "1.0.0", repo_file, True, 5, ""
+            )
+
+    print("=== Сравнение со штатными средствами (pipdeptree) ===")
+    for note in get_visualizer_comparison_notes():
+        print(note)
+
+    return EXIT_CODE_SUCCESS
+
+
 def main(argv=None) -> int:
     """Main CLI entry point."""
     parser = build_argument_parser()
@@ -135,8 +205,7 @@ def main(argv=None) -> int:
             return run_stage_three(args.config)
         if args.stage == FOUR:
             return run_stage_four(args.config)
-        print(f"Stage {args.stage} is not yet implemented.")
-        return EXIT_CODE_SUCCESS
+        return run_stage_five(args.config, run_demo=args.demo)
     except (ConfigError, CollectorError) as err:
         print(f"Error: {err}", file=sys.stderr)
         return EXIT_CODE_ERROR
